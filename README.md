@@ -27,6 +27,23 @@ Run Claude Code (and other Anthropic-API-compatible clients) against Argonne's i
    source ~/.bashrc
    ```
 
+### Running from Aurora
+
+**Login node (UAN).** Aurora UANs can't reach `homes.cels.anl.gov` directly — SSH needs to jump through `logins.cels.anl.gov`. Add this to `~/.ssh/config` on the UAN so the launcher's plain `ssh homes.cels.anl.gov` transparently routes through the jump host:
+
+```
+Host homes.cels.anl.gov
+    ProxyJump logins.cels.anl.gov
+```
+
+Make sure the file is locked down or SSH will refuse to use it:
+
+```bash
+chmod 600 ~/.ssh/config
+```
+
+**Compute node (`qsub -I`).** Compute nodes can't reach `logins.cels.anl.gov` directly either, so SSH has to chain through a UAN first. The launcher detects this automatically when `$PBS_JOBID` is set and adds the extra hop, using `$PBS_O_HOST` (the UAN you submitted from) as the first jump. Override with the env vars below if needed.
+
 ## Usage
 
 From any directory:
@@ -47,6 +64,8 @@ When you exit Claude, the proxy and SSH tunnel are torn down automatically.
 
 - `ARGO_USER` — override the auth token sent to Argo (defaults to `$USER`).
 - `CLAUDE_EXECUTABLE` — path or name of the `claude` binary to launch (defaults to `claude`).
+- `ARGO_AURORA_UAN` — UAN to use as the first SSH hop on Aurora compute nodes (defaults to `$PBS_O_HOST`, falling back to `aurora-uan-0011`).
+- `ARGO_SSH_JUMP` — explicit comma-separated SSH jump chain passed as `-J`. Overrides the auto-detected compute-node default.
 
 ## How it works
 
@@ -78,13 +97,6 @@ ANTHROPIC_BASE_URL="http://127.0.0.1:8083/argoapi/" \
 module use /soft/modulefiles
 module load frameworks
 
-# installs in .local/bin
-curl -fsSL https://claude.ai/install.sh | bash
-```
-
-## Install Claude Code on Polaris Login Nodes
-
-```bash
 # installs in .local/bin
 curl -fsSL https://claude.ai/install.sh | bash
 ```

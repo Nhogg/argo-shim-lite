@@ -9,6 +9,14 @@ PROXY_PORT=8083
 CLAUDE_EXECUTABLE="${CLAUDE_EXECUTABLE:-claude}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# SSH jump chain. On Aurora compute nodes ($PBS_JOBID set) the default
+# routes through a UAN; PBS records the submitting UAN in $PBS_O_HOST.
+# Users can override either the UAN or the whole chain.
+ARGO_AURORA_UAN="${ARGO_AURORA_UAN:-${PBS_O_HOST:-aurora-uan-0011}}"
+if [ -z "${ARGO_SSH_JUMP}" ] && [ -n "${PBS_JOBID}" ]; then
+    ARGO_SSH_JUMP="${ARGO_AURORA_UAN},logins.cels.anl.gov"
+fi
+
 # SSH ControlMaster settings
 CONTROL_PATH="/tmp/ssh-argo-claude-$$"
 
@@ -52,7 +60,14 @@ fi
 echo -e "${YELLOW}Starting SSH tunnel to ${TUNNEL_REMOTE_HOST}...${NC}"
 echo -e "${YELLOW}(You may need to complete MFA authentication)${NC}"
 
+SSH_JUMP_OPTS=()
+if [ -n "${ARGO_SSH_JUMP}" ]; then
+    SSH_JUMP_OPTS=(-J "${ARGO_SSH_JUMP}")
+    echo -e "${YELLOW}Using SSH jump chain: ${ARGO_SSH_JUMP}${NC}"
+fi
+
 ssh -f -N \
+    "${SSH_JUMP_OPTS[@]}" \
     -o ControlMaster=yes \
     -o ControlPath="${CONTROL_PATH}" \
     -L ${TUNNEL_LOCAL_PORT}:${TUNNEL_REMOTE_HOST}:${TUNNEL_REMOTE_PORT} \
