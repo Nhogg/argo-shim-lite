@@ -22,15 +22,17 @@ Run Claude Code (and other Anthropic-API-compatible clients) against Argonne's i
    ```bash
    export PATH="$HOME/argo-shim-lite:$PATH"
    ```
-4. Make sure login shells also pick up your PATH. Login shells (e.g. `qsub -I` on compute nodes) source `~/.bash_profile` and ignore `~/.bashrc` unless told otherwise, so add a one-line bridge:
+4. Open a new shell (or `qsub -I` if you'll be running on a compute node) and verify:
+   ```bash
+   which argonne-claude.sh
+   ```
+   If it prints a path, setup is done — skip to [Usage](#usage). On Aurora this normally just works because ALCF's system config sources user `.bashrc`s for login shells. If `which` returns "not found", do step 5.
+5. *(Only if step 4 failed.)* Login shells on your system don't source `~/.bashrc` automatically. Bridge `~/.bash_profile` so they do:
    ```bash
    echo '[ -f ~/.bashrc ] && . ~/.bashrc' >> ~/.bash_profile
-   ```
-   `>>` creates `~/.bash_profile` if it doesn't exist and appends if it does. Now both interactive shells (which already source `.bashrc`) and login shells get the same PATH and env. If you'd rather not bridge, the alternative is to duplicate the `export PATH=...` line into `~/.bash_profile` directly — works, but you have to keep the two files in sync from now on.
-5. Reload your shell:
-   ```bash
    source ~/.bash_profile
    ```
+   `>>` creates `~/.bash_profile` if it doesn't exist and appends if it does. Alternative: duplicate the `export PATH=...` line into `~/.bash_profile` directly — works, but you have to keep the two files in sync from now on.
 
 ### Running from Aurora
 
