@@ -1,47 +1,73 @@
-# ai-agents-at-anl
-Notes for running Claude Code with Argo at Argonne for IDE integration and agentic workflows.
+# argo-shim-lite
 
-
-# Using Argo in Claude Code
-
-This guide covers running Claude Code against the Argo LLM API from machines outside the ANL internal network (e.g., your laptop). It also covers installing Claude Code on Aurora and Polaris login nodes.
+Run Claude Code (and other Anthropic-API-compatible clients) against Argonne's internal Argo LLM API from outside the ANL network. Wraps the SSH tunnel, local proxy, and Claude launch into a single command.
 
 ## Prerequisites
 
 - SSH access to `homes.cels.anl.gov`
-- Python 3 with `aiohttp` installed (`pip install aiohttp`)
+- Python 3.12 with `aiohttp` (`pip install -r requirements.txt`)
 - Claude Code installed ([install instructions](https://docs.anthropic.com/en/docs/claude-code/overview))
 
-## Quick Start (3 steps)
+## One-time setup
 
-Open three terminals:
+1. Clone this repo somewhere stable, e.g. `~/src/argo-shim-lite`.
+2. Install the proxy's Python dependency:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Make the launcher callable from anywhere by adding its directory to your `PATH` in `~/.bashrc`:
+   ```bash
+   export PATH="$HOME/src/argo-shim-lite:$PATH"
+   ```
+   Reload your shell:
+   ```bash
+   source ~/.bashrc
+   ```
 
-**Terminal 1** — Start the SSH tunnel:
+## Usage
+
+From any directory:
+
 ```bash
+argonne-claude.sh
+```
+
+The script handles everything end to end:
+
+1. Opens an SSH tunnel to `apps.inside.anl.gov` via `homes.cels.anl.gov` (you'll be prompted for MFA).
+2. Starts the local proxy on port 8083.
+3. Launches Claude Code wired up to the proxy.
+
+When you exit Claude, the proxy and SSH tunnel are torn down automatically.
+
+### Optional environment overrides
+
+- `ARGO_USER` — override the auth token sent to Argo (defaults to `$USER`).
+- `CLAUDE_EXECUTABLE` — path or name of the `claude` binary to launch (defaults to `claude`).
+
+## How it works
+
+1. The SSH tunnel forwards local port 8082 to `apps.inside.anl.gov:443` through `homes.cels.anl.gov`.
+2. `claude-argo-proxy.py` listens on port 8083, rewrites the `Host` header, and forwards requests through the tunnel.
+3. Claude Code sends requests to `http://127.0.0.1:8083/argoapi/`, which routes them to the Argo API.
+
+### Manual setup (for debugging)
+
+If you need to run the pieces by hand — e.g. to inspect proxy logs in isolation — open three terminals:
+
+```bash
+# Terminal 1: SSH tunnel
 ssh -L 8082:apps.inside.anl.gov:443 -N homes.cels.anl.gov
+
+# Terminal 2: Local proxy
+python3.12 claude-argo-proxy.py
+
+# Terminal 3: Claude Code
+ANTHROPIC_BASE_URL="http://127.0.0.1:8083/argoapi/" \
+  ANTHROPIC_AUTH_TOKEN=$USER \
+  CLAUDE_CODE_SKIP_ANTHROPIC_AUTH=1 \
+  claude
 ```
-
-**Terminal 2** — Start the local proxy:
-```bash
-python claude-argo-proxy.py
-```
-
-**Terminal 3** — Launch Claude Code:
-```bash
-ANTHROPIC_BASE_URL="http://127.0.0.1:8083/argoapi/" ANTHROPIC_AUTH_TOKEN=$USER CLAUDE_CODE_SKIP_ANTHROPIC_AUTH=1 claude
-```
-
-Or use the convenience script that handles all three steps:
-```bash
-./argonne-claude.sh
-```
-
-## How It Works
-
-1. The SSH tunnel forwards local port 8082 to `apps.inside.anl.gov:443` through `homes.cels.anl.gov`
-2. `claude-argo-proxy.py` listens on port 8083, rewrites requests, and forwards them through the tunnel on port 8082
-3. Claude Code sends API requests to the local proxy, which routes them to the Argo API
-
 
 ## Install Claude Code on Aurora Login Nodes
 
@@ -59,31 +85,3 @@ curl -fsSL https://claude.ai/install.sh | bash
 # installs in .local/bin
 curl -fsSL https://claude.ai/install.sh | bash
 ```
-
-
-## Run PBS MCP Server as well
-
-```bash
-git clone --recursive git@github.com:jtchilders/pbs-mcp-demo.git
-```
-
-Need to add MCP to Claude config.
-
-Edit `~/.claude.json` and add the following:
-
-```json
-{
-   "mcpServers": {
-      "pbs": {
-         "command": "/path/to/pbs-mcp-demo/start_pbs_mcp.sh"
-      },
-      "env": {
-         "PBS_SYSTEM": "aurora"
-      }
-   }
-}
-```
-
-Then restart Claude Code.
-
-Now you can use the `pbs` MCP server in Claude Code to launch jobs, check status, etc.
