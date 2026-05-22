@@ -3,7 +3,7 @@
 Run Claude Code (and other Anthropic-API-compatible clients) against an Argonne-hosted LLM API. Supports two backends, picked explicitly with `--backend`:
 
 - **`argo`** — Argonne's internal Argo LLM API. Requires an SSH tunnel to `apps.inside.anl.gov` via `homes.cels.anl.gov` plus a local proxy. Works from outside the ANL network.
-- **`asksage`** — Ask Sage's Anthropic-compatible endpoint at `https://api.asksage.ai/server/anthropic`. No tunnel or proxy needed; just an API key.
+- **`asksage`** — Ask Sage's Anthropic-compatible endpoint. Defaults to the Argonne-hosted tenant (`https://api.asksage.anl.gov/server/anthropic`); override with `ASKSAGE_BASE_URL` to target a different tenant such as the public `https://api.asksage.ai/server/anthropic`. No tunnel or proxy needed; just an API key.
 
 ## Common prerequisites
 
@@ -55,7 +55,9 @@ chmod 600 ~/.ssh/config
 
 ### AskSage backend setup
 
-Get your API key from the Ask Sage platform (Settings → Account → Manage your API Keys). See [Identity](#identity) below for how to give it to the launcher — the recommended fallback is a token file at `~/.asksage/token`:
+Get your API key from the Ask Sage platform (Settings → Account → Manage your API Keys). The launcher targets the Argonne-hosted tenant (`api.asksage.anl.gov`) by default, which is where Argonne accounts live; if your account is on a different tenant, set `ASKSAGE_BASE_URL` to that tenant's `/server/anthropic` URL (e.g. `https://api.asksage.ai/server/anthropic` for the public site).
+
+See [Identity](#identity) below for how to give the launcher your key — the recommended fallback is a token file at `~/.asksage/token`:
 
 ```bash
 mkdir -p ~/.asksage && chmod 700 ~/.asksage
@@ -106,7 +108,9 @@ When you exit Claude, the proxy and SSH tunnel are torn down automatically.
 ### AskSage flow
 
 1. Resolves your API key from env or token file.
-2. Launches Claude Code with `ANTHROPIC_BASE_URL` pointed at the Ask Sage endpoint.
+2. Queries `${ASKSAGE_BASE_URL}/v1/models` to discover which models the tenant serves. Picks the first entry (AskSage returns them in capability order — most-capable first) as `ANTHROPIC_MODEL`, and the first `haiku` model as `ANTHROPIC_SMALL_FAST_MODEL`. Skip the query by setting `ASKSAGE_MODEL` and/or `ASKSAGE_SMALL_FAST_MODEL` yourself.
+3. Probes whether the tenant accepts Claude Code's newer adaptive-thinking mode (`thinking: {type: "adaptive"}`, which Opus 4.7 turns on by default). If the backend rejects it, sets `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` for this run so Claude Code falls back to the legacy enabled/disabled mode the backend understands. When AskSage adds support upstream, the probe stops finding the rejection and the flag is no longer set — no code change needed. Skip the probe by setting `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` yourself.
+4. Launches Claude Code with `ANTHROPIC_BASE_URL` pointed at the Ask Sage endpoint, the discovered model env vars, and (if applicable) the adaptive-thinking opt-out.
 
 ### Optional environment overrides
 
@@ -124,6 +128,9 @@ AskSage only:
 
 - `ASKSAGE_API_KEY` — fallback identity if `--identity` is not passed.
 - `ASKSAGE_TOKEN_FILE` — path to read the API key from (defaults to `~/.asksage/token`). Used only if neither `--identity` nor `$ASKSAGE_API_KEY` is set.
+- `ASKSAGE_BASE_URL` — full Anthropic-compatible endpoint URL (defaults to `https://api.asksage.anl.gov/server/anthropic`). Set this to point at a different AskSage tenant, e.g. `https://api.asksage.ai/server/anthropic` for the public site.
+- `ASKSAGE_MODEL` — short-circuit the model discovery query; passed straight through as `ANTHROPIC_MODEL`. Useful when you want to pin a specific model (e.g. `claude-sonnet-4-6`) or when the discovery query is failing.
+- `ASKSAGE_SMALL_FAST_MODEL` — same idea for `ANTHROPIC_SMALL_FAST_MODEL` (Claude Code's small/fast model used for cheap background tasks).
 
 ## How it works
 
@@ -135,7 +142,9 @@ AskSage only:
 
 ### AskSage
 
-Claude Code sends requests directly to `https://api.asksage.ai/server/anthropic`, authenticated with your Ask Sage API key. No tunnel or proxy involved.
+Claude Code sends requests directly to the AskSage Anthropic-compatible endpoint (defaults to Argonne's tenant at `https://api.asksage.anl.gov/server/anthropic`; override with `ASKSAGE_BASE_URL`), authenticated with your Ask Sage API key. No tunnel or proxy involved.
+
+The launcher also points `NODE_EXTRA_CA_CERTS` at `certs/incommon-rsa-server-ca-2.pem` (a public intermediate from Sectigo, signed by USERTrust which is in Mozilla's root store). The ANL AskSage server does not include this intermediate in its TLS handshake, which would otherwise cause Claude Code's bundled Node runtime to fail verification with "SSL certificate verification failed". If you've already set `NODE_EXTRA_CA_CERTS` yourself, the launcher leaves it alone.
 
 ### Manual setup (for debugging Argo)
 
