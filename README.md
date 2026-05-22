@@ -108,9 +108,10 @@ When you exit Claude, the proxy and SSH tunnel are torn down automatically.
 ### AskSage flow
 
 1. Resolves your API key from env or token file.
-2. Queries `${ASKSAGE_BASE_URL}/v1/models` to discover which models the tenant serves. Picks the first entry (AskSage returns them in capability order — most-capable first) as `ANTHROPIC_MODEL`, and the first `haiku` model as `ANTHROPIC_SMALL_FAST_MODEL`. Skip the query by setting `ASKSAGE_MODEL` and/or `ASKSAGE_SMALL_FAST_MODEL` yourself.
-3. Probes whether the tenant accepts Claude Code's newer adaptive-thinking mode (`thinking: {type: "adaptive"}`, which Opus 4.7 turns on by default). If the backend rejects it, sets `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` for this run so Claude Code falls back to the legacy enabled/disabled mode the backend understands. When AskSage adds support upstream, the probe stops finding the rejection and the flag is no longer set — no code change needed. Skip the probe by setting `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` yourself.
-4. Launches Claude Code with `ANTHROPIC_BASE_URL` pointed at the Ask Sage endpoint, the discovered model env vars, and (if applicable) the adaptive-thinking opt-out.
+2. Queries `${ASKSAGE_BASE_URL}/v1/models` to discover which models the tenant serves. Skip the query by setting `ASKSAGE_MODEL` and/or `ASKSAGE_SMALL_FAST_MODEL` yourself.
+3. Probes whether the tenant accepts Claude Code's newer adaptive-thinking mode (`thinking: {type: "adaptive"}`, which Opus 4.7 turns on by default). When the backend rejects it, sets `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` for this run. Skip the probe by setting `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` yourself.
+4. Picks the main model from the catalog: when adaptive thinking is supported, takes the first (most-capable) entry — currently `claude-opus-4-7`. When it isn't, prefers an `opus-4-6` / `sonnet-4-6` model, since `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` is only honored by Claude Code for those model names; for Opus 4.7 specifically, adaptive thinking is the only mode and the env var is bypassed. Picks the first `haiku` entry as `ANTHROPIC_SMALL_FAST_MODEL`. When AskSage adds adaptive support upstream, the probe starts succeeding and the picker reverts to the first entry automatically — no code change needed.
+5. Launches Claude Code with `ANTHROPIC_BASE_URL` pointed at the Ask Sage endpoint, the picked model env vars, and (if applicable) the adaptive-thinking opt-out.
 
 ### Optional environment overrides
 
