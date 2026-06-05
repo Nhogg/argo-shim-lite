@@ -29,8 +29,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-CLAUDE_EXECUTABLE="${CLAUDE_EXECUTABLE:-claude}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLAUDE_EXECUTABLE="${CLAUDE_EXECUTABLE:-claude}"
+
+DEFAULT_PYTHON="${SCRIPT_DIR}/.venv/bin/python"
+if [ -z "${PYTHON_EXECUTABLE:-}" ] && [ -x "${DEFAULT_PYTHON}" ]; then
+    PYTHON_EXECUTABLE="${DEFAULT_PYTHON}"
+else
+    PYTHON_EXECUTABLE="${PYTHON_EXECUTABLE:-python3}"
+fi
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -78,6 +85,20 @@ run_argo() {
 
     echo -e "${GREEN}Starting Argo Claude setup...${NC}"
 
+    if ! command -v "${PYTHON_EXECUTABLE}" >/dev/null 2>&1; then
+        echo -e "${RED}Python interpreter not found: ${PYTHON_EXECUTABLE}${NC}"
+        exit 1
+    fi
+
+    if ! "${PYTHON_EXECUTABLE}" -c 'import aiohttp' >/dev/null 2>&1; then
+        echo -e "${RED}Missing Python dependency: aiohttp${NC}"
+        echo -e "${YELLOW}Create a local virtualenv and install dependencies with:${NC}"
+        echo -e "  python3 -m venv \"${SCRIPT_DIR}/.venv\""
+        echo -e "  \"${SCRIPT_DIR}/.venv/bin/python\" -m pip install -r \"${SCRIPT_DIR}/requirements.txt\""
+        exit 1
+    fi
+
+
     # Check if tunnel port is already in use
     if lsof -i :${TUNNEL_LOCAL_PORT} >/dev/null 2>&1; then
         echo -e "${RED}Port ${TUNNEL_LOCAL_PORT} is already in use.${NC}"
@@ -112,7 +133,7 @@ run_argo() {
     # Step 2: Start local proxy
     echo -e "${YELLOW}Starting local proxy...${NC}"
 
-    python3.12 "${SCRIPT_DIR}/claude-argo-proxy.py" &
+    "${PYTHON_EXECUTABLE}" "${SCRIPT_DIR}/claude-argo-proxy.py" &
     PROXY_PID=$!
 
     sleep 2
